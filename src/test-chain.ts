@@ -24,9 +24,10 @@ import {
   parseHiddenDefinition,
 } from './crawl';
 
-const KNOWN_HIDDEN_CHAR = 'ebfd93f2-5522-40bb-99ec-713719b3a0fc'; // Cienna
+const KNOWN_HIDDEN_CHAR = 'ebfd93f2-5522-40bb-99ec-713719b3a0fc'; // Cienna (showdefinition=false, needs proxy trick)
+const KNOWN_VISIBLE_CHAR = 'f2692fe6-27a1-4095-a878-f8b8e56e052a'; // showdefinition=true, definition served inline
 
-const TOKEN_PATH = join(import.meta.dir, '..', '..', 'token.txt');
+const TOKEN_PATH = join(import.meta.dir, '..', 'token.txt');
 const token = (await Bun.file(TOKEN_PATH).text()).trim();
 if (!token) {
   console.error(`No token in ${TOKEN_PATH}`);
@@ -107,6 +108,33 @@ await step('getCharacter(token, KNOWN_HIDDEN_CHAR)', async () => {
     'first_message alias missing on single');
   assert(Array.isArray(knownChar.first_messages), 'first_messages array missing');
   return `"${knownChar.name}"  showdef=${knownChar.showdefinition}  allow_proxy=${knownChar.allow_proxy}  total_chat=${knownChar.total_chat}  fm_len=${knownChar.first_message!.length}  tokens=${knownChar.token_counts!.total_tokens}`;
+});
+
+// 2b. getCharacter on a character whose definition is public (showdefinition=true).
+// No proxy trick required — personality/scenario/example_dialogs/first_message should
+// all come back inline on the SINGLE endpoint.
+await step('getCharacter(token, KNOWN_VISIBLE_CHAR)', async () => {
+  const visibleChar = await getCharacter(token, KNOWN_VISIBLE_CHAR);
+  assert(visibleChar.id === KNOWN_VISIBLE_CHAR, 'id mismatch');
+  assert(visibleChar.showdefinition === true, 'expected showdefinition=true');
+  assert(
+    typeof visibleChar.personality === 'string' && visibleChar.personality.length > 0,
+    'personality should be present inline when showdefinition=true',
+  );
+  assert(
+    typeof visibleChar.scenario === 'string' && visibleChar.scenario.length > 0,
+    'scenario should be present inline when showdefinition=true',
+  );
+  assert(
+    typeof visibleChar.first_message === 'string' && visibleChar.first_message.length > 0,
+    'first_message should be present inline',
+  );
+  // example_dialogs is technically optional on the platform, but pretty common —
+  // assert it's at least a string if defined.
+  if (visibleChar.example_dialogs !== undefined) {
+    assert(typeof visibleChar.example_dialogs === 'string', 'example_dialogs must be string when set');
+  }
+  return `"${visibleChar.name}"  showdef=${visibleChar.showdefinition}  allow_proxy=${visibleChar.allow_proxy}  personality=${visibleChar.personality!.length}  scenario=${visibleChar.scenario!.length}  example_dialogs=${visibleChar.example_dialogs?.length ?? 0}  fm=${visibleChar.first_message!.length}`;
 });
 
 // 3. getCreatorProfile (best-effort — endpoint may not exist on /mb)

@@ -6,7 +6,7 @@
 //   bun cli.ts list [page]                  # list characters from a page
 //   bun cli.ts char <characterId>           # raw character object
 //
-// Token is read from ../../token.txt (relative to this file).
+// Token is read from ./token.txt at the repo root (gitignored; see token.txt.example).
 
 import { join } from 'node:path';
 import {
@@ -16,7 +16,7 @@ import {
   getFullExtract,
 } from './crawl';
 
-const TOKEN_PATH = join(import.meta.dir, '..', '..', 'token.txt');
+const TOKEN_PATH = join(import.meta.dir, '..', 'token.txt');
 const token = (await Bun.file(TOKEN_PATH).text()).trim();
 if (!token) {
   console.error(`No token in ${TOKEN_PATH}`);

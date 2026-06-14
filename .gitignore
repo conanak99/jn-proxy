@@ -1,6 +1,9 @@
 # dependencies (bun install)
 node_modules
 
+# python venv created by deploy.sh for the curl_cffi /generateAlpha bypass
+venv/
+
 # output
 out
 dist
@@ -32,3 +35,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+token.txt

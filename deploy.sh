@@ -4,21 +4,26 @@
 # Differences vs the old references/image-proxy-playwright/deploy.sh:
 #   - No `pkill -f chromium` — there is no browser to clean up anymore.
 #   - Uses `bun install` (not `npm install`).
-#   - Reinstalls `curl_cffi` if the system Python is missing it, since the
-#     /generateAlpha bypass depends on it.
+#   - Installs `curl_cffi` into a project-local venv (./venv) instead of the
+#     system Python. This avoids the Debian/Ubuntu PEP 668 trap where pip
+#     can't upgrade apt-installed deps (e.g. `Cannot uninstall cffi 1.16.0,
+#     RECORD file not found. Hint: The package was installed by debian.`)
+#     because apt packages don't ship pip RECORD files.
 #   - Auto-detects the current branch (the old script was pinned to a branch
 #     called `playwright`).
+#
+# Requirements on the host:
+#   - bun        (curl -fsSL https://bun.sh/install | bash)
+#   - pm2        (npm i -g pm2)
+#   - python3 + python3-venv (apt install -y python3 python3-venv)
 
 set -euo pipefail
 
-# Run from the directory containing this script regardless of where it was
-# invoked from. Lets PM2 / cron / a CI runner call it with any cwd.
 cd "$(dirname "$0")"
 
 BRANCH="${DEPLOY_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
 echo "[deploy] branch: $BRANCH"
 
-# Hard reset to remote head — matches the old deploy.sh behaviour.
 git fetch origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
 
@@ -26,15 +31,29 @@ git reset --hard "origin/$BRANCH"
 rm -rf node_modules
 bun install --frozen-lockfile --production
 
-# Python helper for /generateAlpha Cloudflare bypass.
-PYTHON_BIN="${JANITOR_PYTHON:-python3}"
-if ! "$PYTHON_BIN" -c 'import curl_cffi' >/dev/null 2>&1; then
-  echo "[deploy] installing curl_cffi for $PYTHON_BIN"
-  # --break-system-packages is required on Debian/Ubuntu's PEP 668 pythons.
-  "$PYTHON_BIN" -m pip install --break-system-packages --no-cache-dir curl_cffi
+# ----- Python venv with curl_cffi (Cloudflare bypass for /generateAlpha) -----
+VENV_DIR="${VENV_DIR:-./venv}"
+SYSTEM_PYTHON="${SYSTEM_PYTHON:-python3}"
+
+if [[ ! -x "$VENV_DIR/bin/python3" ]]; then
+  echo "[deploy] creating venv at $VENV_DIR"
+  "$SYSTEM_PYTHON" -m venv "$VENV_DIR"
 fi
 
-# Start or restart via pm2. `startOrRestart` works whether the app is already
-# registered or not, exactly like the old deploy.
-pm2 startOrRestart pm2.config.cjs
+VENV_PY="$VENV_DIR/bin/python3"
+
+# Pin curl_cffi to the version we tested against. Bump intentionally.
+CURL_CFFI_VERSION="${CURL_CFFI_VERSION:-0.15.0}"
+
+if ! "$VENV_PY" -c "import curl_cffi, sys; sys.exit(0 if curl_cffi.__version__ == '$CURL_CFFI_VERSION' else 1)" >/dev/null 2>&1; then
+  echo "[deploy] installing curl_cffi==$CURL_CFFI_VERSION into $VENV_DIR"
+  "$VENV_PY" -m pip install --upgrade pip
+  "$VENV_PY" -m pip install --no-cache-dir "curl_cffi==$CURL_CFFI_VERSION"
+fi
+
+# Expose the venv python to pm2.config.cjs (which already honours JANITOR_PYTHON).
+export JANITOR_PYTHON="$(cd "$(dirname "$VENV_PY")" && pwd)/python3"
+echo "[deploy] JANITOR_PYTHON=$JANITOR_PYTHON"
+
+pm2 startOrRestart pm2.config.cjs --update-env
 pm2 save

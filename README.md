@@ -6,17 +6,17 @@ Bun/TypeScript port of [`references/image-proxy-playwright/src/crawl.js`](../ima
 
 | File | Purpose |
 |------|---------|
-| `types.ts` | TypeScript shapes for `Character`, `Chat`, `ChatInfo`, `ChatMessage`, `CreatorProfile`, `GenerateAlphaBody`, `GenerateAlphaResponse`, `HiddenDefinition`, etc. |
-| `crawl.ts` | Public methods. Every method takes `token` as its first argument so the module is safe to embed in other services. |
-| `index.ts` | Hono-on-Bun HTTP server. Drop-in replacement for `references/image-proxy-playwright/src/index.js` — same route shape, same query params. |
-| `cf-fetch.py` | Tiny stdin→stdout JSON shim that uses `curl_cffi` to bypass Cloudflare's TLS-fingerprint WAF on `/generateAlpha`. |
-| `cli.ts` | Manual exerciser for the library. |
-| `test-chain.ts` | End-to-end smoke test that hits every public method against the live backend. |
+| `src/types.ts` | TypeScript shapes for `Character`, `Chat`, `ChatInfo`, `ChatMessage`, `CreatorProfile`, `GenerateAlphaBody`, `GenerateAlphaResponse`, `HiddenDefinition`, etc. |
+| `src/crawl.ts` | Public methods. Every method takes `token` as its first argument so the module is safe to embed in other services. |
+| `src/index.ts` | Hono-on-Bun HTTP server. Drop-in replacement for `references/image-proxy-playwright/src/index.js` — same route shape, same query params. |
+| `src/cf-fetch.py` | Tiny stdin→stdout JSON shim that uses `curl_cffi` to bypass Cloudflare's TLS-fingerprint WAF on `/generateAlpha`. |
+| `src/cli.ts` | Manual exerciser for the library. |
+| `src/test-chain.ts` | End-to-end smoke test that hits every public method against the live backend. |
 | `Dockerfile` | Production image (oven/bun:alpine + python3 + curl_cffi). |
 | `pm2.config.cjs` | PM2 ecosystem file. Single app, runs through the absolute path to `bun` (per the [official PM2 + Bun guide](https://bun.com/docs/guides/ecosystem/pm2)), hourly cron restart, 512MB memory cap. No Xvfb (no Chromium anymore). |
 | `deploy.sh` | Pull → `bun install` → ensure `curl_cffi` is present → `pm2 startOrRestart pm2.config.cjs`. |
 
-## Public API (`crawl.ts`)
+## Public API (`src/crawl.ts`)
 
 ```ts
 getCharacters(token, page = 1): Promise<CharacterListResponse>
@@ -30,7 +30,7 @@ getImageBytes(folder, fileName): Promise<{ bytes, contentType }>             // 
 getImgType(fileName): string                                                 // ".png" -> "image/png" etc.
 ```
 
-## HTTP Server (`index.ts`)
+## HTTP Server (`src/index.ts`)
 
 Drop-in replacement for `references/image-proxy-playwright/src/index.js`.
 
@@ -78,7 +78,7 @@ docker run -p 3000:3000 janitor-mobile-ts
 * `/mb/*` calls pass Cloudflare with stock `fetch` from Bun — no impersonation needed.
 * `POST /generateAlpha` is gated by a Cloudflare WAF rule that fingerprints the TLS handshake (JA3). Bun's BoringSSL handshake and stock `curl` both get a 403. Python's [`curl_cffi`](https://github.com/lexiforest/curl_cffi) (wrapper around `libcurl-impersonate`) passes reliably with its `chrome` impersonation alias (currently Chrome 146).
 
-`crawl.ts` keeps everything else in pure Bun and only shells out for that one call. End-to-end run: ~3 s for one extraction, ~1.2 s per additional extraction in the same process.
+`src/crawl.ts` keeps everything else in pure Bun and only shells out for that one call. End-to-end run: ~3 s for one extraction, ~1.2 s per additional extraction in the same process.
 
 ### Bun-native alternatives we tried (and why they're not used)
 
@@ -92,7 +92,7 @@ docker run -p 3000:3000 janitor-mobile-ts
 | Real headless **Playwright** Chromium | ❌ rate-limited | First `/generateAlpha` call passes; subsequent calls from the same browser process are hard-blocked by Cloudflare ("Access Restricted") even after rotating `__cf_bm` or opening a fresh context. Only `chromium.launch()` per call works, ~3× slower than Python and a 90 MB browser download. |
 | Python + `curl_cffi` subprocess | ✅ | 5 back-to-back calls all return 200 in ~1.2 s each. |
 
-If a Bun-native binding eventually ships with `chrome146` (or whatever Cloudflare's current preferred fingerprint is) and doesn't trip Bun's libuv gap, it's a drop-in swap for `cf-fetch.py` since the JSON-in/JSON-out interface is tiny.
+If a Bun-native binding eventually ships with `chrome146` (or whatever Cloudflare's current preferred fingerprint is) and doesn't trip Bun's libuv gap, it's a drop-in swap for `src/cf-fetch.py` since the JSON-in/JSON-out interface is tiny.
 
 ## Setup
 
@@ -104,31 +104,31 @@ pip3 install --break-system-packages curl_cffi
 bun install
 ```
 
-A valid Supabase access token must live at `../../token.txt` (repo root). You can also pass it in directly to any crawl method.
+A valid Supabase access token must live at `./token.txt` at the repo root (gitignored — see `token.txt.example`). You can also pass it in directly to any crawl method.
 
 ## Usage
 
 ```bash
 # Auto-pick a hidden+proxy character from page 1 and extract its definition
-bun cli.ts
+bun src/cli.ts
 
 # Target one character
-bun cli.ts ebfd93f2-5522-40bb-99ec-713719b3a0fc
+bun src/cli.ts ebfd93f2-5522-40bb-99ec-713719b3a0fc
 
 # List page 1 (browse)
-bun cli.ts list 1
+bun src/cli.ts list 1
 
 # Print raw character JSON
-bun cli.ts char ebfd93f2-5522-40bb-99ec-713719b3a0fc
+bun src/cli.ts char ebfd93f2-5522-40bb-99ec-713719b3a0fc
 
 # Print only the parsed hidden definition (parity with crawl.js#getCharacterInfo)
-bun cli.ts hidden ebfd93f2-5522-40bb-99ec-713719b3a0fc
+bun src/cli.ts hidden ebfd93f2-5522-40bb-99ec-713719b3a0fc
 ```
 
 As a library:
 
 ```ts
-import { getCharacterInfo, getCharacter } from './crawl';
+import { getCharacterInfo, getCharacter } from './src/crawl';
 
 const token = process.env.JANITOR_TOKEN!;
 const char = await getCharacter(token, 'ebfd93f2-...');
