@@ -84,10 +84,17 @@ A few intentional choices baked into `biome.json`:
 - **Every public method takes `token` as the first argument.** Do not introduce a
   module-level token global; keeps the library safe to embed in services that manage
   their own auth.
-- **`/characters` accepts an optional token.** When omitted, no `authorization` header
-  is sent upstream — used for browser-based troubleshooting. Other routes
-  (`/v2/characters/:id`, `/profiles/:id`) still require `?token=` because their
-  upstream endpoints reject anonymous calls.
+- **`/characters` and `/profiles/:id` accept an optional token.** Both upstream
+  endpoints (`/mb/characters`, `/mb/profiles/:id`) return identical payloads to
+  anonymous callers (verified byte-for-byte for profiles; listing has a slightly
+  different recommendation order anonymously). `/v2/characters/:id` still requires
+  `?token=` even though `/mb/characters/:id` *is* partially public (SFW characters
+  return 200 anonymously; NSFW-gated ones return 401 `gated_explicit_content`).
+  Reason: the `?detail=true` branch calls `/generateAlpha` for hidden-definition
+  recovery, which has no anonymous path, and surfacing a 400 here is friendlier
+  than passing a 401 through. When token is omitted, `commonHeaders()` skips the
+  `Authorization` header entirely (don't send `Bearer ` with an empty value —
+  Cloudflare flags it).
 - **Hidden-definition extraction (the "proxy trick") only works when
   `character.allow_proxy === true`** and `showdefinition === false`. The server
   refuses to assemble the prompt otherwise.

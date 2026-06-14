@@ -41,7 +41,7 @@ Drop-in replacement for `references/image-proxy-playwright/src/index.js`.
 | `GET /proxy/:folder/:fileName` | Image bytes from `ella.janitorai.com/{folder}/{fileName}?width=1200` with `Cache-Control: public, max-age=604800`. |
 | `GET /characters?page=N&token=...` | Wraps `getCharacters`. |
 | `GET /v2/characters/:id?token=...&detail=true` | Wraps `getCharacter`. When `detail=true` and the character has `allow_proxy=true` but a blank `personality`, the hidden definition is recovered via `/generateAlpha` and merged into the response. In production (`NODE_ENV=production`) a 0–12 s jitter delay is inserted before the extract, matching the old server's anti-ban behaviour. |
-| `GET /profiles/:id?token=...` | Wraps `getCreatorProfile`. **Now requires `?token=` because the mobile profile endpoint is authed (the old `/hampter` one wasn't).** |
+| `GET /profiles/:id[?token=...]` | Wraps `getCreatorProfile`. Token is optional — `/mb/profiles/:id` returns byte-identical payloads anonymously (verified). Forwarded when given, in case the backend ever starts personalizing. |
 
 Run:
 

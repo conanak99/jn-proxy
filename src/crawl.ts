@@ -358,9 +358,15 @@ export async function getCharacter(token: string, characterId: UUID): Promise<Ch
   return ch;
 }
 
-/** GET /mb/profiles/{profileId} — creator profile. */
-export async function getCreatorProfile(token: string, profileId: UUID): Promise<CreatorProfile> {
-  console.log(`[crawl] view profile ${profileId}`);
+/** GET /mb/profiles/{profileId} — creator profile. `token` is optional: the
+ *  upstream endpoint serves anonymous callers a payload identical to the
+ *  authed one (verified byte-for-byte across multiple profiles), so we
+ *  forward the call with no Authorization header when none is given. */
+export async function getCreatorProfile(
+  token: string | undefined | null,
+  profileId: UUID,
+): Promise<CreatorProfile> {
+  console.log(`[crawl] view profile ${profileId}${token ? '' : ' (no token)'}`);
   return jsonFetch<CreatorProfile>(`${MB_BASE}/profiles/${profileId}`, {
     method: 'GET',
     headers: commonHeaders(token),

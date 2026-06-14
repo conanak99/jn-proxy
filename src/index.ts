@@ -154,12 +154,16 @@ app.get('/v2/characters/:id', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /profiles/:id?token=...
+// GET /profiles/:id[?token=...]
+//
+// `token` is optional: the upstream /mb/profiles/:id is public and returns
+// byte-identical payloads regardless of bearer. We still forward the token
+// when provided (in case Janitor ever starts personalizing the response),
+// but never reject the call for lacking one.
 // ---------------------------------------------------------------------------
 app.get('/profiles/:id', async (c) => {
-  const token = c.req.query('token');
+  const token = c.req.query('token') || undefined;
   const id = c.req.param('id');
-  if (!token) return c.body('missing ?token', 400);
   try {
     const result = await getCreatorProfile(token, id);
     return c.json(result);
