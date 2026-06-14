@@ -81,12 +81,18 @@ app.get('/proxy/:folder/:fileName', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /characters?page=N&token=...
+// GET /characters?page=N[&token=...]
+//
+// `token` is intentionally optional here: the upstream `/mb/characters`
+// listing returns data for anonymous callers too, which is convenient for
+// quickly sanity-checking the proxy from a browser (e.g.
+//   http://<host>:3000/characters?page=1
+// ). When `?token=` is provided we forward it as a bearer; when it's empty
+// or omitted, we send no auth header at all (rather than `Bearer `).
 // ---------------------------------------------------------------------------
 app.get('/characters', async (c) => {
-  const token = c.req.query('token');
+  const token = c.req.query('token') || undefined;
   const pageRaw = c.req.query('page');
-  if (!token) return c.body('missing ?token', 400);
   try {
     const page = pageRaw ? Number(pageRaw) : 1;
     const result = await getCharacters(token, Number.isFinite(page) && page > 0 ? page : 1);
@@ -178,7 +184,9 @@ const server = Bun.serve({
   fetch: app.fetch,
 });
 
-console.log(`Reverse proxy server is running on port ${server.port}  (NODE_ENV=${IS_DEV ? 'dev' : 'production'})`);
+console.log(
+  `Reverse proxy server is running on port ${server.port}  (NODE_ENV=${IS_DEV ? 'dev' : 'production'})`,
+);
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.once(sig, () => {

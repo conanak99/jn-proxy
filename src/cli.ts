@@ -9,12 +9,7 @@
 // Token is read from ./token.txt at the repo root (gitignored; see token.txt.example).
 
 import { join } from 'node:path';
-import {
-  getCharacters,
-  getCharacter,
-  getCharacterInfo,
-  getFullExtract,
-} from './crawl';
+import { getCharacter, getCharacterInfo, getCharacters, getFullExtract } from './crawl';
 
 const TOKEN_PATH = join(import.meta.dir, '..', 'token.txt');
 const token = (await Bun.file(TOKEN_PATH).text()).trim();
@@ -29,8 +24,7 @@ async function autoPickHiddenCharacter(): Promise<string> {
   console.log('No character id given — listing page 1 and picking a hidden+proxy candidate...');
   const listing = await getCharacters(token, 1);
   const data = listing.data ?? [];
-  const candidate =
-    data.find((c) => c.showdefinition === false && c.allow_proxy) ?? data[0];
+  const candidate = data.find((c) => c.showdefinition === false && c.allow_proxy) ?? data[0];
   if (!candidate) throw new Error('Empty character listing.');
   console.log(`Picked ${candidate.name} (${candidate.id})`);
   return candidate.id;
@@ -62,9 +56,7 @@ try {
     const data = listing.data ?? [];
     console.log(`page ${page}: ${data.length} characters`);
     for (const c of data.slice(0, 20)) {
-      console.log(
-        `  ${c.id}  ${c.name}  showdef=${c.showdefinition}  proxy=${c.allow_proxy}`,
-      );
+      console.log(`  ${c.id}  ${c.name}  showdef=${c.showdefinition}  proxy=${c.allow_proxy}`);
     }
   } else if (cmd === 'char') {
     const id = rest[0];

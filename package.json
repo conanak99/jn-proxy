@@ -7,13 +7,20 @@
     "dev": "bun run --hot src/index.ts",
     "start": "NODE_ENV=production bun run src/index.ts",
     "test": "bun src/test-chain.ts",
-    "extract": "bun src/cli.ts"
+    "extract": "bun src/cli.ts",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run check && bun run typecheck"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "hono": "^4.12.25"

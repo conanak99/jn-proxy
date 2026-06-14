@@ -30,9 +30,9 @@
 //     -> returns { personality, scenario, example_dialogs, first_message }
 //        even when showdefinition === false (the "hidden definition" trick)
 
-import { spawn as bunSpawn } from 'bun';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { spawn as bunSpawn } from 'bun';
 
 import type {
   Character,
@@ -64,8 +64,7 @@ const UA_CHROME =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-const SEC_CH_UA =
-  '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"';
+const SEC_CH_UA = '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"';
 
 /** Single user-agent display name used inside the proxy-mode prompt. We
  * normalize it back to {{user}} after the system message is parsed. */
@@ -114,9 +113,11 @@ async function resolvePython(): Promise<string> {
 // Header helpers
 // ---------------------------------------------------------------------------
 
-function commonHeaders(token: string, extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    authorization: `Bearer ${token}`,
+function commonHeaders(
+  token: string | undefined | null,
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  const headers: Record<string, string> = {
     accept: 'application/json, text/plain, */*',
     'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
     'user-agent': UA_CHROME,
@@ -128,6 +129,11 @@ function commonHeaders(token: string, extra: Record<string, string> = {}): Recor
     'sec-ch-ua-platform': '"macOS"',
     ...extra,
   };
+  // Omit the bearer entirely when no token is provided — lets callers probe
+  // public endpoints (e.g. /mb/characters listing) anonymously for
+  // troubleshooting without faking a header.
+  if (token) headers.authorization = `Bearer ${token}`;
+  return headers;
 }
 
 async function jsonFetch<T>(
@@ -234,32 +240,36 @@ async function cfFetch(req: CfFetchRequest): Promise<CfFetchResponse> {
 type AnyRecord = Record<string, unknown>;
 
 function applyLegacyAliases<T extends AnyRecord>(obj: T): T {
+  // TS 6 disallows direct dot-write on a generic constrained to an index
+  // signature; alias the parameter to its constraint to keep the public
+  // return type narrow while mutating through the index signature.
+  const o = obj as AnyRecord;
   // is_proxy_enabled -> allow_proxy
-  if (obj.allow_proxy === undefined && typeof obj.is_proxy_enabled === 'boolean') {
-    obj.allow_proxy = obj.is_proxy_enabled;
+  if (o.allow_proxy === undefined && typeof o.is_proxy_enabled === 'boolean') {
+    o.allow_proxy = o.is_proxy_enabled;
   }
   // stats.{chat,message} -> total_chat / total_message
-  const stats = obj.stats as { chat?: number; message?: number } | undefined;
+  const stats = o.stats as { chat?: number; message?: number } | undefined;
   if (stats) {
-    if (obj.total_chat === undefined && typeof stats.chat === 'number') {
-      obj.total_chat = stats.chat;
+    if (o.total_chat === undefined && typeof stats.chat === 'number') {
+      o.total_chat = stats.chat;
     }
-    if (obj.total_message === undefined && typeof stats.message === 'number') {
-      obj.total_message = stats.message;
+    if (o.total_message === undefined && typeof stats.message === 'number') {
+      o.total_message = stats.message;
     }
   }
   // LIST returns `total_tokens` flat; SINGLE / web return it nested under
   // `token_counts`. Synthesize the nested form so consumers can always read
   // `character.token_counts?.total_tokens`.
-  if (obj.token_counts === undefined && typeof obj.total_tokens === 'number') {
-    obj.token_counts = { total_tokens: obj.total_tokens };
+  if (o.token_counts === undefined && typeof o.total_tokens === 'number') {
+    o.token_counts = { total_tokens: o.total_tokens };
   }
   // first_messages[firstNonNull] -> first_message (only meaningful on SINGLE).
-  if (obj.first_message === undefined && Array.isArray(obj.first_messages)) {
-    const first = (obj.first_messages as Array<string | null>).find(
+  if (o.first_message === undefined && Array.isArray(o.first_messages)) {
+    const first = (o.first_messages as Array<string | null>).find(
       (m) => typeof m === 'string' && m.length > 0,
     );
-    if (first) obj.first_message = first;
+    if (first) o.first_message = first;
   }
   return obj;
 }
@@ -307,12 +317,14 @@ export async function getImageBytes(
 // /mb/* endpoints  (bun native fetch — these pass CF on their own)
 // ---------------------------------------------------------------------------
 
-/** GET /mb/characters?page=N — paginated browse. */
+/** GET /mb/characters?page=N — paginated browse. `token` is optional so the
+ *  listing can be hit anonymously (useful for `/characters` troubleshooting
+ *  from a browser). When omitted, no `authorization` header is sent. */
 export async function getCharacters(
-  token: string,
+  token: string | undefined | null,
   page: number = 1,
 ): Promise<CharacterListResponse> {
-  console.log(`[crawl] list characters page=${page}`);
+  console.log(`[crawl] list characters page=${page}${token ? '' : ' (no token)'}`);
   const url = new URL(`${MB_BASE}/characters`);
   url.searchParams.set('page', String(page));
   const resp = await jsonFetch<CharacterListResponse>(url.toString(), {
@@ -320,7 +332,9 @@ export async function getCharacters(
     headers: commonHeaders(token),
   });
   if (Array.isArray(resp.data)) {
-    resp.data = resp.data.map((c) => applyLegacyAliases(c as unknown as AnyRecord) as unknown as typeof c);
+    resp.data = resp.data.map(
+      (c) => applyLegacyAliases(c as unknown as AnyRecord) as unknown as typeof c,
+    );
   }
   return resp;
 }
@@ -345,10 +359,7 @@ export async function getCharacter(token: string, characterId: UUID): Promise<Ch
 }
 
 /** GET /mb/profiles/{profileId} — creator profile. */
-export async function getCreatorProfile(
-  token: string,
-  profileId: UUID,
-): Promise<CreatorProfile> {
+export async function getCreatorProfile(token: string, profileId: UUID): Promise<CreatorProfile> {
   console.log(`[crawl] view profile ${profileId}`);
   return jsonFetch<CreatorProfile>(`${MB_BASE}/profiles/${profileId}`, {
     method: 'GET',
@@ -437,9 +448,7 @@ function buildGenerateBody(args: {
     generateMode: 'NEW',
     generateType: 'CHAT',
     profile: { id: userId, name: PROFILE_NAME, user_name: PROFILE_NAME },
-    profiles: [
-      { id: userId, name: PROFILE_NAME, type: 'profile', user_name: PROFILE_NAME },
-    ],
+    profiles: [{ id: userId, name: PROFILE_NAME, type: 'profile', user_name: PROFILE_NAME }],
     userConfig: {
       api: 'openai',
       allow_mobile_nsfw: false,
@@ -527,7 +536,7 @@ export function parseHiddenDefinition(
 
   const grab = (re: RegExp): string => {
     const m = stripped.match(re);
-    return m ? m[1].trim() : '';
+    return m?.[1] ? m[1].trim() : '';
   };
 
   out.scenario = grab(/<scenario>([\s\S]*?)<\/scenario>/i);
@@ -540,7 +549,7 @@ export function parseHiddenDefinition(
   // Discover the alias from the tag itself.
   let personaAlias = '';
   const m = stripped.match(/<([^<>/]+?)'s Persona>([\s\S]*?)<\/\1's Persona>/);
-  if (m) {
+  if (m?.[1] && m[2]) {
     out.personality = m[2].trim();
     personaAlias = m[1].trim();
   } else {

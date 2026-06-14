@@ -15,11 +15,11 @@
 import { join } from 'node:path';
 
 import {
-  getCharacters,
-  getCharacter,
-  getCreatorProfile,
   createChatAndGetFirstMessage,
+  getCharacter,
   getCharacterInfo,
+  getCharacters,
+  getCreatorProfile,
   getFullExtract,
   parseHiddenDefinition,
 } from './crawl';
@@ -63,7 +63,8 @@ await step('getCharacters(token, page=1)', async () => {
   const listing = await getCharacters(token, 1);
   assert(Array.isArray(listing.data), 'data is not an array');
   assert(listing.data.length > 0, 'empty character list');
-  const first = listing.data[0];
+  // Safe: length-guarded above. noUncheckedIndexedAccess doesn't track that.
+  const first = listing.data[0]!;
   pickedCreatorId = first.creator_id;
   // Legacy aliases (what downstream services consume).
   assert(typeof first.allow_proxy === 'boolean', 'legacy alias allow_proxy missing on list');
@@ -76,7 +77,10 @@ await step('getCharacters(token, page=1)', async () => {
     first.token_counts && typeof first.token_counts.total_tokens === 'number',
     'synthesized token_counts.total_tokens missing on list',
   );
-  assert(first.token_counts!.total_tokens === first.total_tokens, 'token_counts.total_tokens != total_tokens');
+  assert(
+    first.token_counts!.total_tokens === first.total_tokens,
+    'token_counts.total_tokens != total_tokens',
+  );
   // Mobile-native versions should still be present too.
   assert(typeof first.is_proxy_enabled === 'boolean', 'mobile is_proxy_enabled missing');
   assert(first.stats && typeof first.stats.chat === 'number', 'mobile stats.chat missing');
@@ -97,15 +101,20 @@ await step('getCharacter(token, KNOWN_HIDDEN_CHAR)', async () => {
   assert(!knownChar.example_dialogs, 'example_dialogs should be absent when hidden');
   // Legacy stat aliases on the single endpoint
   assert(typeof knownChar.total_chat === 'number', 'legacy alias total_chat missing on single');
-  assert(typeof knownChar.total_message === 'number', 'legacy alias total_message missing on single');
+  assert(
+    typeof knownChar.total_message === 'number',
+    'legacy alias total_message missing on single',
+  );
   // SINGLE has nested token_counts natively (no synthesis needed)
   assert(
     knownChar.token_counts && typeof knownChar.token_counts.total_tokens === 'number',
     'token_counts.total_tokens missing on single',
   );
   // first_message should be derived from first_messages[firstNonNull]
-  assert(typeof knownChar.first_message === 'string' && knownChar.first_message.length > 0,
-    'first_message alias missing on single');
+  assert(
+    typeof knownChar.first_message === 'string' && knownChar.first_message.length > 0,
+    'first_message alias missing on single',
+  );
   assert(Array.isArray(knownChar.first_messages), 'first_messages array missing');
   return `"${knownChar.name}"  showdef=${knownChar.showdefinition}  allow_proxy=${knownChar.allow_proxy}  total_chat=${knownChar.total_chat}  fm_len=${knownChar.first_message!.length}  tokens=${knownChar.token_counts!.total_tokens}`;
 });
@@ -132,7 +141,10 @@ await step('getCharacter(token, KNOWN_VISIBLE_CHAR)', async () => {
   // example_dialogs is technically optional on the platform, but pretty common —
   // assert it's at least a string if defined.
   if (visibleChar.example_dialogs !== undefined) {
-    assert(typeof visibleChar.example_dialogs === 'string', 'example_dialogs must be string when set');
+    assert(
+      typeof visibleChar.example_dialogs === 'string',
+      'example_dialogs must be string when set',
+    );
   }
   return `"${visibleChar.name}"  showdef=${visibleChar.showdefinition}  allow_proxy=${visibleChar.allow_proxy}  personality=${visibleChar.personality!.length}  scenario=${visibleChar.scenario!.length}  example_dialogs=${visibleChar.example_dialogs?.length ?? 0}  fm=${visibleChar.first_message!.length}`;
 });
@@ -147,7 +159,8 @@ await step('getCreatorProfile(token, <creator>)', async () => {
   } catch (e) {
     // Mobile backend may 404 this — that's informational, not a failure
     // for the rest of the chain. Mark as a soft pass with the error text.
-    return `not exposed via /mb (${e instanceof Error ? e.message.split('\n')[0].slice(0, 120) : 'unknown'})`;
+    const firstLine = e instanceof Error ? (e.message.split('\n')[0] ?? '') : 'unknown';
+    return `not exposed via /mb (${firstLine.slice(0, 120)})`;
   }
 });
 
@@ -183,7 +196,10 @@ Cienna: [Hello.]
   assert(parsed.personality.includes('Name: {{char}}'), 'personality not normalized');
   assert(parsed.scenario.includes('{{char}} meets {{user}}'), 'scenario not normalized');
   assert(parsed.example_dialogs.includes('{{user}}: hi'), 'example_dialogs not normalized');
-  assert(parsed.example_dialogs.includes('{{char}}: [Hello.]'), 'example_dialogs char not normalized');
+  assert(
+    parsed.example_dialogs.includes('{{char}}: [Hello.]'),
+    'example_dialogs char not normalized',
+  );
   return 'normalization OK';
 });
 
@@ -192,8 +208,14 @@ await step('getCharacterInfo(token, KNOWN_HIDDEN_CHAR)', async () => {
   const hidden = await getCharacterInfo(token, KNOWN_HIDDEN_CHAR);
   assert(hidden.personality.length > 200, `personality too short (${hidden.personality.length})`);
   assert(hidden.scenario.length > 50, `scenario too short (${hidden.scenario.length})`);
-  assert(hidden.example_dialogs.length > 50, `example_dialogs too short (${hidden.example_dialogs.length})`);
-  assert(hidden.first_message.length > 50, `first_message too short (${hidden.first_message.length})`);
+  assert(
+    hidden.example_dialogs.length > 50,
+    `example_dialogs too short (${hidden.example_dialogs.length})`,
+  );
+  assert(
+    hidden.first_message.length > 50,
+    `first_message too short (${hidden.first_message.length})`,
+  );
   assert(hidden.personality.includes('{{char}}'), '{{char}} placeholder missing from personality');
   return `personality=${hidden.personality.length}  scenario=${hidden.scenario.length}  example_dialogs=${hidden.example_dialogs.length}  first_message=${hidden.first_message.length}`;
 });
@@ -218,7 +240,7 @@ console.log(`  ${passed}/${results.length} steps passed`);
 if (failed) {
   console.log(`  ${failed} failed:`);
   for (const r of results.filter((r) => !r.ok)) {
-    console.log(`    - ${r.name}: ${r.detail.split('\n')[0].slice(0, 200)}`);
+    console.log(`    - ${r.name}: ${(r.detail.split('\n')[0] ?? '').slice(0, 200)}`);
   }
 }
 console.log(`========================================\n`);

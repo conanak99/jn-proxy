@@ -269,7 +269,13 @@ export interface CreatorProfile {
 // /generateAlpha (the cross-platform generation endpoint)
 // ---------------------------------------------------------------------------
 
-export type GenerateMode = 'NEW' | 'CONTINUE' | 'ALTERNATIVE' | 'SUGGESTION' | 'SUMMARY_FULL' | 'SUMMARY_LAST';
+export type GenerateMode =
+  | 'NEW'
+  | 'CONTINUE'
+  | 'ALTERNATIVE'
+  | 'SUGGESTION'
+  | 'SUMMARY_FULL'
+  | 'SUMMARY_LAST';
 export type GenerateType = 'CHAT' | 'STORY';
 export type ClientPlatform = 'web' | 'mobile';
 export type ApiBackend = 'janitor' | 'openai' | 'claude' | 'kobold' | 'mocktest';
@@ -337,7 +343,9 @@ export interface GenerateAlphaBody {
     summary: string;
     summary_chat_id?: number;
   };
-  chatMessages: Array<Partial<ChatMessage> & Pick<ChatMessage, 'chat_id' | 'is_bot' | 'is_main' | 'message'>>;
+  chatMessages: Array<
+    Partial<ChatMessage> & Pick<ChatMessage, 'chat_id' | 'is_bot' | 'is_main' | 'message'>
+  >;
   clientPlatform: ClientPlatform;
   forcedPromptGenerationCacheRefetch: {
     character: boolean;
