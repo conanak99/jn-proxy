@@ -36,6 +36,24 @@ VENV_DIR="${VENV_DIR:-./venv}"
 SYSTEM_PYTHON="${SYSTEM_PYTHON:-python3}"
 
 if [[ ! -x "$VENV_DIR/bin/python3" ]]; then
+  # Pre-flight: Debian/Ubuntu split ensurepip out of the base python3 package,
+  # so `python3 -m venv` silently writes a half-built venv and bails. Detect
+  # that BEFORE creating the dir so the user sees the exact apt package to
+  # install (e.g. `python3.12-venv` on Ubuntu 24.04) and we don't leave a
+  # broken `venv/` behind that subsequent runs short-circuit on.
+  if ! "$SYSTEM_PYTHON" -c 'import ensurepip' >/dev/null 2>&1; then
+    PYVER="$("$SYSTEM_PYTHON" -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')"
+    cat >&2 <<EOF
+[deploy] ERROR: $SYSTEM_PYTHON is missing the venv/ensurepip module.
+        On Debian/Ubuntu install the version-matched package, then re-run:
+
+            sudo apt update
+            sudo apt install -y ${PYVER}-venv      # or: python3-venv (metapackage)
+            rm -rf "$VENV_DIR"
+            bash "$0"
+EOF
+    exit 1
+  fi
   echo "[deploy] creating venv at $VENV_DIR"
   "$SYSTEM_PYTHON" -m venv "$VENV_DIR"
 fi
