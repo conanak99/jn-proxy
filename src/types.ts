@@ -12,7 +12,7 @@
 //   POST   /chats          body { character_id }     -> Chat
 //   GET    /chats/{chatId}                           -> ChatInfo
 //   POST   /chats/{chatId}/messages                  -> ChatMessage[]
-//   GET    /profiles/{profileId}                     -> CreatorProfile  (best-effort)
+//   GET    /profiles/{profileId}                     -> CreatorProfile  (public, identical to web)
 //
 // Plus the shared (non-/mb) generation endpoint:
 //   POST   https://janitorai.com/generateAlpha       -> GenerateAlphaResponse
@@ -252,16 +252,49 @@ export interface ChatMessage {
 // ---------------------------------------------------------------------------
 // Profile (creator)
 // ---------------------------------------------------------------------------
+//
+// Verified mobile (/mb/profiles/:id) and web (/profiles/:id) return byte-
+// identical payloads (same keys, same types, same values) — no aliasing
+// layer is needed here, unlike `Character`. The previous type guessed at
+// fields like `name`, `bio`, `is_plus` that don't exist; the canonical
+// keys observed in the wild (June 2026) are listed below.
+//
+// One quirk worth flagging: `followers_count` is serialized as a STRING
+// upstream (e.g. "948"), not a number. Consumers that want arithmetic
+// should `Number(p.followers_count)` themselves.
+
+export interface CreatorProfileStyle {
+  /** Visual effect, e.g. "stars". May be empty string. */
+  effect: string;
+  /** Raw CSS string a creator can paste in. Often empty. */
+  custom_style: string;
+}
+
+export interface CreatorBadge {
+  /** Stable badge id, e.g. "appmop". */
+  id: string;
+  /** Image path served from janitorai.com, e.g. "/events/icons/appmop.webp". */
+  img: string;
+  /** Sort priority — lower numbers come first. */
+  sortOrder: number;
+  /** Human-readable label, e.g. "App Mop". */
+  title: string;
+}
 
 export interface CreatorProfile {
   id: UUID;
-  name: string;
-  user_name?: string;
-  avatar?: string | null;
-  bio?: string;
-  is_verified?: boolean;
-  is_plus?: boolean;
-  created_at?: Iso8601;
+  user_name: string;
+  /** Filename only, hosted at `https://ella.janitorai.com/{avatar}`. */
+  avatar: string | null;
+  /** HTML blob (raw rich-text editor output, may contain <img>, <style>, etc.). */
+  about_me: string;
+  is_verified: boolean;
+  plusbadge: boolean;
+  /** Upstream sends this as a string (!), e.g. "948". */
+  followers_count: string;
+  style: CreatorProfileStyle;
+  badges: CreatorBadge[];
+  created_at: Iso8601;
   [extra: string]: unknown;
 }
 

@@ -149,19 +149,23 @@ await step('getCharacter(token, KNOWN_VISIBLE_CHAR)', async () => {
   return `"${visibleChar.name}"  showdef=${visibleChar.showdefinition}  allow_proxy=${visibleChar.allow_proxy}  personality=${visibleChar.personality!.length}  scenario=${visibleChar.scenario!.length}  example_dialogs=${visibleChar.example_dialogs?.length ?? 0}  fm=${visibleChar.first_message!.length}`;
 });
 
-// 3. getCreatorProfile (best-effort — endpoint may not exist on /mb)
+// 3. getCreatorProfile — verified shape is identical to the web /profiles/:id
+// endpoint (10 keys, same types). Assert the required ones are present.
 await step('getCreatorProfile(token, <creator>)', async () => {
   const creatorId = knownChar?.creator_id ?? pickedCreatorId;
   assert(creatorId, 'no creator id available');
-  try {
-    const p = await getCreatorProfile(token, creatorId);
-    return `name="${p.name ?? '(none)'}" id=${p.id}`;
-  } catch (e) {
-    // Mobile backend may 404 this — that's informational, not a failure
-    // for the rest of the chain. Mark as a soft pass with the error text.
-    const firstLine = e instanceof Error ? (e.message.split('\n')[0] ?? '') : 'unknown';
-    return `not exposed via /mb (${firstLine.slice(0, 120)})`;
-  }
+  const p = await getCreatorProfile(token, creatorId);
+  assert(p.id === creatorId, 'id round-trip mismatch');
+  assert(typeof p.user_name === 'string' && p.user_name.length > 0, 'user_name missing');
+  assert(typeof p.about_me === 'string', 'about_me should be string (possibly empty)');
+  assert(typeof p.is_verified === 'boolean', 'is_verified must be boolean');
+  assert(typeof p.plusbadge === 'boolean', 'plusbadge must be boolean');
+  // Quirk worth pinning: followers_count is a STRING upstream, not a number.
+  assert(typeof p.followers_count === 'string', 'followers_count must be string (upstream quirk)');
+  assert(p.style && typeof p.style.effect === 'string', 'style.effect missing');
+  assert(Array.isArray(p.badges), 'badges must be array');
+  assert(typeof p.created_at === 'string', 'created_at must be ISO8601 string');
+  return `user_name="${p.user_name}"  followers=${p.followers_count}  verified=${p.is_verified}  plus=${p.plusbadge}  badges=${p.badges.length}  about_me_len=${p.about_me.length}`;
 });
 
 // 4. createChatAndGetFirstMessage
